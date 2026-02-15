@@ -1,5 +1,15 @@
+/**
+ * Utilities for flattening Elasticsearch index mappings into a simple
+ * field-name/type list that LLM agents can reason about.
+ *
+ * @module
+ */
+
+/** A single field path and its Elasticsearch data type. */
 export interface FieldMapping {
+  /** Dot-delimited field path (e.g., `customer.address.city`). */
   field: string;
+  /** Elasticsearch field type (e.g., `keyword`, `text`, `double`, `date`). */
   type: string;
 }
 

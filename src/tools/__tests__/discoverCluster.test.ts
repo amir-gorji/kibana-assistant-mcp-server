@@ -78,7 +78,7 @@ describe('discover_cluster tool', () => {
 
     const result = await (discoverClusterTool as any).execute({});
 
-    expect(result.status).toBe('success');
+    expect(result.type).toBe('success');
     expect(result.data.cluster_summary.total_indices).toBe(2);
     expect(result.data.cluster_summary.discovered).toBe(2);
     expect(result.data.indices).toHaveLength(2);
@@ -183,7 +183,7 @@ describe('discover_cluster tool', () => {
 
     const result = await (discoverClusterTool as any).execute({});
 
-    expect(result.status).toBe('success');
+    expect(result.type).toBe('success');
     expect(result.data.indices).toHaveLength(2);
 
     const goodIdx = result.data.indices.find((i: any) => i.index === 'good');

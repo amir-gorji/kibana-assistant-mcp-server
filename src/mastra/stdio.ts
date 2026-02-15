@@ -1,13 +1,13 @@
 import { MCPServer } from '@mastra/mcp';
-import { kibanaSearchTool } from './kibanaSearch';
+import { allTools } from '../tools';
 
 const server = new MCPServer({
-  name: 'kibana assistant server',
-  version: '0.0.1',
-  tools: { kibanaSearchTool },
+  name: 'kibana-banking-mcp-server',
+  version: '1.0.0',
+  tools: allTools,
 });
 
 server.startStdio().catch((error) => {
-  console.error('Error running MCP server:', error);
+  process.stderr.write(`Error running MCP server: ${error}\n`);
   process.exit(1);
 });

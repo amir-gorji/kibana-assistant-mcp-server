@@ -1,8 +1,26 @@
+/**
+ * **discover_cluster** — Cluster discovery tool.
+ *
+ * This is the entry point for any LLM session. The agent should call this
+ * tool first to understand what indices exist, how large they are, and what
+ * fields each contains. Armed with this context, the agent can construct
+ * accurate DSL queries without hallucinating field names.
+ *
+ * **Business value:** Eliminates the need for stakeholders to memorize index
+ * names or field schemas. A Business Manager can say "show me payment data"
+ * and the agent will discover that `transactions-*` exists with fields like
+ * `amount`, `currency`, and `status`.
+ *
+ * @module
+ */
 import { z } from 'zod';
+import { match } from 'dismatch';
+import type { Model } from 'dismatch';
 import { createSecureTool } from '../lib/toolWrapper';
 import { validateIndexName } from '../lib/inputSanitizer';
 import { flattenProperties, FieldMapping } from '../lib/mappingUtils';
 
+/** Metadata for a single discovered index, including its field mappings. */
 export interface DiscoveredIndex {
   index: string;
   health: string;
@@ -12,9 +30,29 @@ export interface DiscoveredIndex {
   fields: FieldMapping[];
 }
 
+/** Top-level response shape for cluster discovery. */
 export interface ClusterDiscovery {
   cluster_summary: { total_indices: number; discovered: number };
   indices: DiscoveredIndex[];
+}
+
+/**
+ * Discriminated union representing the outcome of fetching an index's mappings.
+ * Uses dismatch `match()` to branch on success vs failure without try/catch.
+ */
+type MappingFetch =
+  | Model<'fetched', { fields: FieldMapping[] }>
+  | Model<'failed', {}>;
+
+/** Removes duplicate field paths that can appear when an alias resolves to multiple concrete indices. */
+function deduplicateFields(fields: FieldMapping[]): FieldMapping[] {
+  const seen = new Map<string, string>();
+  for (const f of fields) {
+    if (!seen.has(f.field)) {
+      seen.set(f.field, f.type);
+    }
+  }
+  return Array.from(seen.entries()).map(([field, type]) => ({ field, type }));
 }
 
 export const discoverClusterTool = createSecureTool({
@@ -78,36 +116,28 @@ export const discoverClusterTool = createSecureTool({
     // 6. Fetch mappings in parallel
     const discoveredIndices: DiscoveredIndex[] = await Promise.all(
       indices.map(async (idx) => {
-        const fields: FieldMapping[] = [];
-        try {
-          const mappingData = await esClient.getMapping(idx.index);
-          for (const indexName of Object.keys(mappingData)) {
-            const properties = mappingData[indexName]?.mappings?.properties;
-            if (properties) {
-              flattenProperties(properties, '', fields);
+        const mappingResult: MappingFetch = await esClient.getMapping(idx.index)
+          .then((data: any) => {
+            const fields: FieldMapping[] = [];
+            for (const indexName of Object.keys(data)) {
+              const properties = data[indexName]?.mappings?.properties;
+              if (properties) flattenProperties(properties, '', fields);
             }
-          }
-        } catch {
-          // If mapping fetch fails for an index, return it with empty fields
-        }
+            return { type: 'fetched' as const, fields };
+          })
+          .catch(() => ({ type: 'failed' as const }));
 
-        // Deduplicate fields (same field path can appear from multiple concrete indices)
-        const seen = new Map<string, string>();
-        for (const f of fields) {
-          if (!seen.has(f.field)) {
-            seen.set(f.field, f.type);
-          }
-        }
+        const fields = match(mappingResult)({
+          fetched: ({ fields }) => deduplicateFields(fields),
+          failed: () => [],
+        });
 
-        return {
-          ...idx,
-          fields: Array.from(seen.entries()).map(([field, type]) => ({ field, type })),
-        };
+        return { ...idx, fields };
       }),
     );
 
     return {
-      status: 'success' as const,
+      type: 'success' as const,
       data: {
         cluster_summary: {
           total_indices: totalIndices,

@@ -6,7 +6,7 @@
   "bin": "dist/stdio.mjs",
   "scripts": {
     "build:mcp": "tsup src/mastra/stdio.ts --format esm,cjs --no-splitting --dts && echo '#!/usr/bin/env node' | cat - dist/stdio.mjs > temp && mv temp dist/stdio.mjs && chmod +x dist/stdio.mjs",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest run"
   },
   "keywords": [],
   "author": "",
@@ -15,7 +15,11 @@
     "@mastra/core": "^1.2.0",
     "@mastra/mcp": "^1.0.0",
     "axios": "^1.13.4",
+    "dismatch": "^0.0.2",
     "tsup": "^8.5.1",
     "typescript": "^5.9.3"
+  },
+  "devDependencies": {
+    "vitest": "^3.0.0"
   }
 }

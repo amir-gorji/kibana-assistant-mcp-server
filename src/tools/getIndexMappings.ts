@@ -1,3 +1,18 @@
+/**
+ * **get_index_mappings** — Retrieves field mappings for a specific index.
+ *
+ * Returns a flat list of `{ field, type }` pairs representing every field
+ * in the index, including nested objects and multi-field sub-fields (e.g.,
+ * `customer_name.keyword`).
+ *
+ * **For Architects:** Quickly inspect the schema of any index to verify
+ * field types, understand nesting depth, or compare across environments.
+ *
+ * **For Developers:** Know which fields are `keyword` vs `text` before
+ * constructing aggregation or sort queries.
+ *
+ * @module
+ */
 import { z } from 'zod';
 import { createSecureTool } from '../lib/toolWrapper';
 import { validateIndexName } from '../lib/inputSanitizer';
@@ -27,7 +42,7 @@ export const getIndexMappingsTool = createSecureTool({
     }
 
     return {
-      status: 'success' as const,
+      type: 'success' as const,
       data: { index, fields },
     };
   },
