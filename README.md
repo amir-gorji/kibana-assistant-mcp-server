@@ -2,31 +2,67 @@
 
 A secure [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) server that connects LLM-powered agents to Elasticsearch and Kibana. Built for digital banking teams where Business Managers, Architects, and Developers need conversational access to operational data — without writing KQL or Elasticsearch DSL by hand.
 
-## Why This Exists
+---
+
+## Table of Contents
+
+1. [Why This Exists](#1-why-this-exists)
+2. [Features](#2-features)
+3. [Architecture](#3-architecture)
+4. [Quick Start](#4-quick-start)
+   - [Prerequisites](#prerequisites)
+   - [Install & Build](#install--build)
+   - [Configure](#configure)
+   - [Run](#run)
+   - [Connect to Claude Desktop](#connect-to-claude-desktop)
+5. [Tools Reference](#5-tools-reference)
+   - [discover_cluster](#discover_cluster)
+   - [kibana_search](#kibana_search)
+   - [check_cluster_health](#check_cluster_health)
+   - [get_alert_status](#get_alert_status)
+6. [Prompts & Resources](#6-prompts--resources)
+7. [Security & Compliance](#7-security--compliance)
+   - [PII Redaction](#pii-redaction)
+   - [Input Sanitization](#input-sanitization)
+   - [Index Access Control](#index-access-control)
+   - [Audit Trail](#audit-trail)
+8. [Type System](#8-type-system)
+9. [Testing](#9-testing)
+10. [Project Structure](#10-project-structure)
+11. [Roadmap](#11-roadmap)
+12. [License](#12-license)
+
+---
+
+## 1. Why This Exists
 
 Digital banking tribes sit on massive telemetry: payment rails (SWIFT gpi, SEPA), customer session data, APM traces, and microservice logs. Querying this data today requires mastering Elasticsearch DSL or relying on pre-built Kibana dashboards that may not answer ad-hoc questions.
 
-This MCP server bridges that gap. It lets an LLM agent discover your cluster, understand index structures, and execute read-only queries — all through a secure, audited pipeline that redacts PII before data ever leaves your infrastructure.
-
-### Who is this for?
+This MCP server bridges that gap. It lets an LLM agent discover your cluster, understand index structures, execute read-only queries, and check platform health — all through a secure, audited pipeline that redacts PII before data ever leaves your infrastructure.
 
 | Persona                | What they get                                                                                                                                    |
 | ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ |
 | **Business Manager**   | Ask natural-language questions about transaction volumes, onboarding funnels, or liquidity metrics. The agent builds the DSL query for you.      |
 | **Software Architect** | Explore cluster topology, review index mappings, and assess system health without context-switching to Kibana.                                   |
-| **Developer**          | Debug by correlating logs across microservices. Search for error patterns, trace transaction IDs, and inspect field mappings — conversationally. |
+| **Developer**          | Debug by correlating logs across microservices. Search for error patterns, trace transaction IDs, and inspect alerting rules — conversationally. |
 
-## Features
+---
+
+## 2. Features
 
 - **Cluster Discovery** — Auto-discovers indices, field mappings, and doc counts so the agent knows what data is available before querying.
 - **Read-Only Search** — Executes Elasticsearch DSL queries with enforced read-only guardrails. Blocked keywords (`_update`, `_delete`, `_bulk`, `script`) are rejected at the input sanitization layer.
+- **Cluster Health** — Returns overall cluster status (green/yellow/red), node counts, shard counts, and unassigned shard details at cluster, index, or shard granularity.
+- **Alert Status** — Retrieves Kibana alerting rules with their last execution status, supporting filtering by rule type, severity tag, and execution state.
 - **Time Range Filtering** — Natural time expressions (`now-24h`, `now-7d`) are merged into any query shape (bool, simple, or empty) automatically.
 - **PII Redaction** — Credit cards (Luhn-validated), IBANs, SSNs, emails, and phone numbers are masked before results reach the LLM. Defense-in-depth for PCI DSS and GDPR compliance.
 - **Audit Logging** — Every tool invocation is logged to stderr with tool name, parameters, execution time, redaction counts, and error details.
 - **Index Access Control** — Restrict which indices the agent can touch via `ALLOWED_INDEX_PATTERNS`.
 - **Retry with Backoff** — Transient failures (429, 503, network errors) are retried with exponential backoff.
 
-## Architecture
+---
+
+## 3. Architecture
 
 ```
 ┌─────────────┐     stdio / SSE      ┌──────────────────────┐
@@ -58,7 +94,9 @@ This MCP server bridges that gap. It lets an LLM agent discover your cluster, un
 
 Every tool invocation flows through a secure pipeline: **validate input** → **execute query** → **redact PII** → **log audit entry** → **return result**. This pipeline is implemented once in `createSecureTool` and shared by all tools.
 
-## Quick Start
+---
+
+## 4. Quick Start
 
 ### Prerequisites
 
@@ -100,7 +138,6 @@ export PII_REDACTION_ENABLED="true"                     # PII masking (default t
 ### Run
 
 ```bash
-# Run as stdio MCP server (for local development / Claude Desktop)
 node dist/stdio.mjs
 ```
 
@@ -123,7 +160,9 @@ Add to your `claude_desktop_config.json`:
 }
 ```
 
-## Tools Reference
+---
+
+## 5. Tools Reference
 
 ### `discover_cluster`
 
@@ -137,6 +176,8 @@ Add to your `claude_desktop_config.json`:
 
 Returns indices sorted by doc count (largest first), each with a flat list of `{ field, type }` mappings.
 
+---
+
 ### `kibana_search`
 
 Executes a read-only Elasticsearch DSL query against an index.
@@ -146,28 +187,60 @@ Executes a read-only Elasticsearch DSL query against an index.
 | `index`      | string | _required_ | Index pattern to search (e.g., `transactions-*`)   |
 | `query`      | object | _required_ | Elasticsearch DSL query body                       |
 | `size`       | number | `10`       | Results to return (capped by `MAX_SEARCH_SIZE`)    |
-| `time_range` | string | --         | Time filter expression (e.g., `now-24h`, `now-7d`) |
+| `time_range` | string | —          | Time filter expression (e.g., `now-24h`, `now-7d`) |
 
-The `time_range` parameter is automatically merged into whatever query shape you provide -- bool queries, simple queries, or empty queries all work.
+The `time_range` parameter is automatically merged into whatever query shape you provide — bool queries, simple queries, or empty queries all work.
 
-### `list_indices`
+---
 
-Lists available Elasticsearch indices with health, status, doc count, and store size.
+### `check_cluster_health`
 
-| Parameter        | Type    | Default | Description                   |
-| ---------------- | ------- | ------- | ----------------------------- |
-| `pattern`        | string  | `*`     | Index pattern filter          |
-| `include_hidden` | boolean | `false` | Include system/hidden indices |
+Returns the health status of the Elasticsearch cluster. Use this to diagnose degraded or red clusters and verify platform health before investigating query or performance problems.
 
-### `get_index_mappings`
+| Parameter | Type   | Default     | Description                                                                  |
+| --------- | ------ | ----------- | ---------------------------------------------------------------------------- |
+| `level`   | enum   | `"cluster"` | Granularity: `"cluster"`, `"indices"`, or `"shards"`. Higher levels include per-index or per-shard detail. |
 
-Returns a flat list of field names and types for a specific index.
+Returns `status` (green / yellow / red), node counts, shard counts, and `unassigned_shards`.
 
-| Parameter | Type   | Default    | Description                       |
-| --------- | ------ | ---------- | --------------------------------- |
-| `index`   | string | _required_ | Index name (e.g., `transactions`) |
+---
 
-## Security & Compliance
+### `get_alert_status`
+
+Retrieves Kibana alerting rules and their last execution status. Use this when investigating incidents to identify firing or erroring alerts. Returns a graceful error message if the Kibana Alerting plugin is not enabled or the API key lacks the required privileges.
+
+| Parameter     | Type   | Default | Description                                                              |
+| ------------- | ------ | ------- | ------------------------------------------------------------------------ |
+| `severity`    | string | —       | Filter by severity tag (e.g., `"critical"`, `"warning"`)                 |
+| `rule_type`   | string | —       | Filter by rule type ID (e.g., `".es-query"`, `"apm.error_rate"`)         |
+| `status`      | enum   | —       | Client-side filter: `"active"`, `"inactive"`, `"error"`, or `"ok"`      |
+| `max_results` | number | `20`    | Maximum number of rules to return                                        |
+
+---
+
+## 6. Prompts & Resources
+
+The server exposes MCP **prompts** (guided workflows) and **resources** (static reference documents) alongside its tools.
+
+**Prompts** provide step-by-step investigation workflows that an LLM can follow:
+
+| Prompt                            | Purpose                                                              |
+| --------------------------------- | -------------------------------------------------------------------- |
+| `investigate_failed_transactions` | Guided workflow for diagnosing payment failures in Elasticsearch     |
+| `compliance_audit_query`          | Structured approach to building PCI DSS / AML audit queries         |
+| `performance_investigation`       | Step-by-step investigation of latency or throughput regressions      |
+
+**Resources** are static reference documents the LLM can read:
+
+| Resource                        | Purpose                                                           |
+| ------------------------------- | ----------------------------------------------------------------- |
+| `banking_query_patterns`        | Common Elasticsearch query patterns for banking data              |
+| `elasticsearch_best_practices`  | Query optimization and index hygiene guidelines                   |
+| `banking_domain_glossary`       | Definitions for domain terms (SWIFT, SEPA, IBAN, liquidity, etc.) |
+
+---
+
+## 7. Security & Compliance
 
 This server is designed for regulated environments. Multiple defense layers ensure sensitive data never reaches the LLM unprotected.
 
@@ -216,46 +289,9 @@ Every tool invocation produces a structured JSON log entry to stderr:
 
 Input parameters are truncated at 500 characters to prevent sensitive data from leaking into logs.
 
-## Project Structure
+---
 
-```
-src/
-├── lib/
-│   ├── types.ts            # ToolResult<T> discriminated union (dismatch Model<>)
-│   ├── config.ts           # Environment-based configuration loader
-│   ├── esClient.ts         # Elasticsearch/Kibana HTTP client with retry
-│   ├── toolWrapper.ts      # Secure tool pipeline (sanitize -> execute -> redact -> audit)
-│   ├── piiRedaction.ts     # Regex-based PII detection and masking
-│   ├── inputSanitizer.ts   # Query validation and index name sanitization
-│   ├── auditLogger.ts      # Structured audit logging to stderr
-│   └── mappingUtils.ts     # Elasticsearch mapping flattener
-├── tools/
-│   ├── index.ts            # Tool registry
-│   ├── discoverCluster.ts  # discover_cluster tool
-│   ├── kibanaSearch.ts     # kibana_search tool
-│   ├── listIndices.ts      # list_indices tool
-│   └── getIndexMappings.ts # get_index_mappings tool
-└── mastra/
-    └── stdio.ts            # MCP server entry point (stdio transport)
-```
-
-## Development
-
-### Run Tests
-
-```bash
-npm test
-```
-
-### Build
-
-```bash
-npm run build:mcp
-```
-
-The build produces `dist/stdio.mjs` (ESM, executable) and `dist/stdio.js` (CJS).
-
-## Type System
+## 8. Type System
 
 Tool results use [dismatch](https://www.npmjs.com/package/dismatch) discriminated unions for type-safe pattern matching:
 
@@ -270,22 +306,92 @@ type ToolSuccess<T> = Model<
 type ToolError = Model<'error', { error: string }>;
 ```
 
-The `type` field (`'success'` | `'error'`) is the discriminant. All branching on tool results uses `match()` from dismatch for exhaustive, compile-time-checked pattern matching -- no `if/else` chains or `switch` statements.
+The `type` field (`'success'` | `'error'`) is the discriminant. All branching on tool results uses `match()` from dismatch for exhaustive, compile-time-checked pattern matching — no `if/else` chains or `switch` statements.
 
-## Roadmap
+---
 
-This server implements the **Phase 1 foundation** of the strategic architecture described in the [companion document](./Kibana%20MCP%20Server%20for%20Digital%20Banking.pdf). Future phases include:
+## 9. Testing
 
-- **Business Intelligence Tools** -- `analyze_banking_funnel`, `get_liquidity_metrics`, `compare_cohort_retention` for the Manager persona
-- **Observability Tools** -- `search_error_clusters`, `trace_transaction_journey` for the Developer persona
-- **Knowledge Base** -- Semantic discovery of Kibana saved objects (dashboards, visualizations) via `find_knowledge_assets`
-- **SSE Transport** -- HTTP/SSE deployment for multi-agent access from Slack, Teams, or internal platforms
-- **Async Search** -- `_async_search` support for long-running aggregations over large time horizons
+The server ships with a comprehensive test suite built on [Vitest](https://vitest.dev/). Tests are co-located with their modules under `__tests__/` directories.
 
-## Did I copy it from anywhere?
+```bash
+npm test
+```
 
-- No, it's just a spare time project, and I don't mind if anyone uses it or modify it, ... (MIT License).
+**Unit tests** cover individual library modules in isolation:
 
-## License
+| Module              | What is tested                                              |
+| ------------------- | ----------------------------------------------------------- |
+| `piiRedaction`      | Pattern detection accuracy, Luhn validation, masking format |
+| `inputSanitizer`    | Blocked keyword detection, index name validation            |
+| `mappingUtils`      | Field flattening, multi-field expansion, deduplication      |
+| `auditLogger`       | Log format, truncation, stderr routing                      |
 
-ISC
+**Integration tests** exercise the full tool execution pipeline end-to-end (input → execute → PII redaction → result), with the HTTP layer replaced by mock fns:
+
+| Tool / Module             | Key scenarios covered                                             |
+| ------------------------- | ----------------------------------------------------------------- |
+| `discoverCluster`         | Index discovery, hidden-index filtering, mapping fetch failures   |
+| `checkClusterHealth`      | Cluster/indices/shards level output, argument pass-through        |
+| `getAlertStatus`          | Rule normalization, KQL filter building, 404/403 graceful errors  |
+| `prompts`                 | Prompt registration, argument schemas, template rendering         |
+| `resources`               | Resource registration, URI resolution, content integrity          |
+
+All 82 tests pass on the current build.
+
+---
+
+## 10. Project Structure
+
+```
+src/
+├── lib/
+│   ├── types.ts                    # ToolResult<T> discriminated union
+│   ├── config.ts                   # Environment-based configuration loader
+│   ├── esClient.ts                 # Elasticsearch/Kibana HTTP client with retry
+│   ├── toolWrapper.ts              # Secure tool pipeline (sanitize → execute → redact → audit)
+│   ├── piiRedaction.ts             # Regex-based PII detection and masking
+│   ├── inputSanitizer.ts           # Query validation and index name sanitization
+│   ├── auditLogger.ts              # Structured audit logging to stderr
+│   ├── mappingUtils.ts             # Elasticsearch mapping flattener
+│   └── __tests__/                  # Unit tests for lib modules
+├── tools/
+│   ├── index.ts                    # Tool registry
+│   ├── discoverCluster.ts          # discover_cluster tool
+│   ├── kibanaSearch.ts             # kibana_search tool
+│   ├── checkClusterHealth.ts       # check_cluster_health tool
+│   ├── getAlertStatus.ts           # get_alert_status tool
+│   └── __tests__/                  # Integration tests for tools
+├── prompts/
+│   ├── index.ts                    # Prompt registry
+│   ├── investigateFailedTransactions.ts
+│   ├── complianceAuditQuery.ts
+│   ├── performanceInvestigation.ts
+│   └── __tests__/
+├── resources/
+│   ├── index.ts                    # Resource registry
+│   ├── bankingQueryPatterns.ts
+│   ├── elasticsearchBestPractices.ts
+│   ├── bankingDomainGlossary.ts
+│   └── __tests__/
+└── mastra/
+    └── stdio.ts                    # MCP server entry point (stdio transport)
+```
+
+---
+
+## 11. Roadmap
+
+This server implements the **Phase 1 foundation** of the strategic architecture described in the companion document. Future phases include:
+
+- **Business Intelligence Tools** — `analyze_banking_funnel`, `get_liquidity_metrics`, `compare_cohort_retention` for the Manager persona
+- **Observability Tools** — `search_error_clusters`, `trace_transaction_journey` for the Developer persona
+- **Knowledge Base** — Semantic discovery of Kibana saved objects (dashboards, visualizations) via `find_knowledge_assets`
+- **SSE Transport** — HTTP/SSE deployment for multi-agent access from Slack, Teams, or internal platforms
+- **Async Search** — `_async_search` support for long-running aggregations over large time horizons
+
+---
+
+## 12. License
+
+MIT — free to use, modify, and distribute.

@@ -145,6 +145,24 @@ export class ElasticsearchClient {
     });
   }
 
+  async clusterHealth(level: 'cluster' | 'indices' | 'shards' = 'cluster'): Promise<any> {
+    return this.withRetry(async () => {
+      const response = await this.esHttp.get(`/_cluster/health?level=${level}`);
+      return response.data;
+    });
+  }
+
+  async findAlertingRules(params: Record<string, string | number>): Promise<any> {
+    return this.withRetry(async () => {
+      const query = new URLSearchParams(
+        Object.entries(params).map(([k, v]) => [k, String(v)])
+      ).toString();
+      const path = `/api/alerting/rules/_find${query ? `?${query}` : ''}`;
+      const response = await this.kibanaHttp.get(path);
+      return response.data;
+    });
+  }
+
   private async withRetry<T>(fn: () => Promise<T>): Promise<T> {
     let lastError: any;
     for (let attempt = 0; attempt < this.config.retryAttempts; attempt++) {
