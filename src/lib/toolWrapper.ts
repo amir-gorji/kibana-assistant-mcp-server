@@ -14,6 +14,7 @@
  * @module
  */
 import { createTool } from '@mastra/core/tools';
+import type { MCPToolProperties } from '@mastra/core/tools';
 import { z } from 'zod';
 import { match } from 'dismatch';
 import { loadConfig, ServerConfig } from './config';
@@ -41,6 +42,7 @@ interface SecureToolOptions<TInput extends z.ZodType, TOutput> {
   id: string;
   description: string;
   inputSchema: TInput;
+  mcp?: MCPToolProperties;
   execute: (
     input: z.infer<TInput>,
     context: { config: ServerConfig; esClient: ElasticsearchClient },
@@ -78,6 +80,7 @@ export function createSecureTool<TInput extends z.ZodType, TOutput>(
     id: options.id,
     description: options.description,
     inputSchema: options.inputSchema,
+    mcp: options.mcp,
     execute: async (input: z.infer<TInput>) => {
       const startTime = Date.now();
       let result: ToolResult<TOutput>;

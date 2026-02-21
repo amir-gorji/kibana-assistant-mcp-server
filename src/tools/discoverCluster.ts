@@ -59,6 +59,15 @@ export const discoverClusterTool = createSecureTool({
   id: 'discover_cluster',
   description:
     'Discover the Elasticsearch cluster: lists all available indices and their field mappings. Call this tool FIRST before any search to understand what data is available, what indices exist, and what fields each index contains.',
+  mcp: {
+    annotations: {
+      title: 'Discover Cluster',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
   inputSchema: z.object({
     pattern: z
       .string()

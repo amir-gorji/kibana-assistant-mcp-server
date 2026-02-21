@@ -22,6 +22,15 @@ export const getIndexMappingsTool = createSecureTool({
   id: 'get_index_mappings',
   description:
     'Get the field mappings for an Elasticsearch index. Returns a flat list of field names and their types, which is useful for understanding the structure of an index before querying it.',
+  mcp: {
+    annotations: {
+      title: 'Get Index Mappings',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
   inputSchema: z.object({
     index: z.string().describe('The index name to get mappings for (e.g., "transactions")'),
   }),

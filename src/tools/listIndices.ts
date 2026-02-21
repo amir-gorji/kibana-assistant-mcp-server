@@ -28,6 +28,15 @@ export const listIndicesTool = createSecureTool({
   id: 'list_indices',
   description:
     'List available Elasticsearch indices. Returns index names, health, status, doc count, and store size.',
+  mcp: {
+    annotations: {
+      title: 'List Indices',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
   inputSchema: z.object({
     pattern: z
       .string()

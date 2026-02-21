@@ -43,6 +43,15 @@ export const kibanaSearchTool = createSecureTool({
   description:
     'Execute a read-only DSL query against an Elasticsearch index to retrieve logs or data. ' +
     'Supports optional time_range filtering (e.g., "now-24h", "now-7d").',
+  mcp: {
+    annotations: {
+      title: 'Kibana Search',
+      readOnlyHint: true,
+      destructiveHint: false,
+      idempotentHint: true,
+      openWorldHint: false,
+    },
+  },
   inputSchema: z.object({
     index: z.string().describe('The index pattern to search (e.g., "logs-*")'),
     query: z.record(z.any()).describe('The Elasticsearch DSL query object'),
